@@ -16,8 +16,10 @@ const BUFFER_ERROR_THRESHOLD = 5;
 const BACKGROUND_RETRY_DELAY = 30000;
 const STABILITY_WINDOW = 15000;
 const PROBE_MIN_FRAGS = 3;
+const STABLE_THRESHOLD = 60000;
+const STABLE_MIN_FRAGS = 10;
 
-function Streaming({ primaryUrl, secondaryUrl, teamsUrl, showDebug = true }) {
+function Streaming({ primaryUrl, secondaryUrl, tertiaryUrl, teamsUrl, showDebug = true }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const retryCountRef = useRef(0);
@@ -27,9 +29,11 @@ function Streaming({ primaryUrl, secondaryUrl, teamsUrl, showDebug = true }) {
   const streamStateRef = useRef(STREAM_STATES.CONNECTING);
   const bufferErrorCountRef = useRef(0);
   const lastFragLoadTimeRef = useRef(Date.now());
-  const probeHlsRef = useRef(null);
+  const probeHlsRef = useRef([]);
   const playbackStartTimeRef = useRef(null);
   const probeTimerRef = useRef(null);
+  const sourceStabilityRef = useRef({ primary: 0, secondary: 0, tertiary: 0 });
+  const failedSourcesRef = useRef(new Set());
 
   const [streamState, setStreamState] = useState(STREAM_STATES.CONNECTING);
   const [currentSource, setCurrentSource] = useState('primary');
@@ -103,10 +107,10 @@ function Streaming({ primaryUrl, secondaryUrl, teamsUrl, showDebug = true }) {
       clearTimeout(probeTimerRef.current);
       probeTimerRef.current = null;
     }
-    if (probeHlsRef.current) {
-      probeHlsRef.current.destroy();
-      probeHlsRef.current = null;
-    }
+    probeHlsRef.current.forEach(p => {
+      try { p.destroy(); } catch (e) { /* ignore */ }
+    });
+    probeHlsRef.current = [];
   };
 
   const scheduleBackgroundRetry = () => {
@@ -116,67 +120,76 @@ function Streaming({ primaryUrl, secondaryUrl, teamsUrl, showDebug = true }) {
     }
 
     retryTimerRef.current = setTimeout(() => {
-      addLog('Probing primary stream in background...', 'info');
+      const urlMap = { primary: primaryUrl, secondary: secondaryUrl, tertiary: tertiaryUrl };
+      const candidates = Object.entries(urlMap).filter(([, url]) => url);
+
       destroyProbe();
 
-      if (!Hls.isSupported()) {
+      if (candidates.length === 0 || !Hls.isSupported()) {
         scheduleBackgroundRetry();
         return;
       }
 
-      const probe = new Hls({
-        enableWorker: false,
-        manifestLoadingTimeOut: 10000,
-        manifestLoadingMaxRetry: 1,
-        levelLoadingTimeOut: 10000,
-        levelLoadingMaxRetry: 1,
-        fragLoadingTimeOut: 15000,
-        fragLoadingMaxRetry: 2,
-      });
-      probeHlsRef.current = probe;
+      addLog(`Probing ${candidates.length} stream source(s)...`, 'info');
+      const fragCounts = {};
+      let resolved = false;
 
-      const probeVideo = document.createElement('video');
-      let probeFragCount = 0;
-      let probeManifestLoaded = false;
+      candidates.forEach(([source, url]) => {
+        fragCounts[source] = 0;
+        const probe = new Hls({
+          enableWorker: false,
+          startLevel: 0,
+          manifestLoadingTimeOut: 10000,
+          manifestLoadingMaxRetry: 1,
+          levelLoadingTimeOut: 10000,
+          levelLoadingMaxRetry: 1,
+          fragLoadingTimeOut: 15000,
+          fragLoadingMaxRetry: 2,
+          maxBufferLength: 10,
+          maxMaxBufferLength: 15,
+        });
+        probeHlsRef.current.push(probe);
 
-      probe.loadSource(primaryUrl);
-      probe.attachMedia(probeVideo);
+        const probeVideo = document.createElement('video');
+        probe.loadSource(url);
+        probe.attachMedia(probeVideo);
 
-      probe.on(Hls.Events.MANIFEST_PARSED, () => {
-        probeManifestLoaded = true;
-        addLog('Probe: manifest loaded, verifying stability...', 'info');
+        probe.on(Hls.Events.FRAG_LOADED, () => {
+          fragCounts[source] += 1;
+        });
 
-        // Start the stability window — after STABILITY_WINDOW ms, check fragment count
-        probeTimerRef.current = setTimeout(() => {
-          if (probeFragCount >= PROBE_MIN_FRAGS) {
-            addLog(`Primary stream stable (${probeFragCount} fragments). Switching over...`, 'success');
-            destroyProbe();
-            retryCountRef.current = 0;
-            setRetryDisplay(0);
-            updateSource('primary');
-            updateStreamState(STREAM_STATES.CONNECTING);
-            initStream(primaryUrl, 'primary');
-          } else {
-            addLog(`Probe: only ${probeFragCount} fragments in ${STABILITY_WINDOW / 1000}s — not stable enough`, 'warning');
-            destroyProbe();
-            scheduleBackgroundRetry();
+        probe.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            fragCounts[source] = -1;
           }
-        }, STABILITY_WINDOW);
+        });
       });
 
-      probe.on(Hls.Events.FRAG_LOADED, () => {
-        probeFragCount += 1;
-      });
+      // After STABLE_THRESHOLD (60s), pick the source with the most fragments
+      probeTimerRef.current = setTimeout(() => {
+        if (resolved) return;
 
-      probe.on(Hls.Events.ERROR, (event, data) => {
-        if (data.fatal) {
-          addLog(probeManifestLoaded
-            ? 'Probe: stream failed during stability check'
-            : 'Primary stream still unavailable', 'warning');
+        const results = Object.entries(fragCounts)
+          .filter(([, count]) => count >= STABLE_MIN_FRAGS)
+          .sort(([, a], [, b]) => b - a);
+
+        if (results.length > 0) {
+          resolved = true;
+          const [bestSource] = results[0];
+          addLog(`${bestSource} stream stable (${fragCounts[bestSource]} fragments in ${STABLE_THRESHOLD / 1000}s). Switching...`, 'success');
+          destroyProbe();
+          failedSourcesRef.current.clear();
+          retryCountRef.current = 0;
+          setRetryDisplay(0);
+          updateSource(bestSource);
+          updateStreamState(STREAM_STATES.CONNECTING);
+          initStream(urlMap[bestSource], bestSource);
+        } else {
+          addLog('No stable stream found, will retry...', 'warning');
           destroyProbe();
           scheduleBackgroundRetry();
         }
-      });
+      }, STABLE_THRESHOLD);
     }, BACKGROUND_RETRY_DELAY);
   };
 
@@ -212,26 +225,50 @@ function Streaming({ primaryUrl, secondaryUrl, teamsUrl, showDebug = true }) {
 
       clearTimers();
       retryTimerRef.current = setTimeout(() => {
-        const url = source === 'primary' ? primaryUrl : secondaryUrl;
-        initStream(url, source);
+        const urlMap = { primary: primaryUrl, secondary: secondaryUrl, tertiary: tertiaryUrl };
+        initStream(urlMap[source], source);
       }, RETRY_DELAY);
-    } else if (source === 'primary' && secondaryUrl) {
-      addLog('Primary stream failed. Switching to backup (MUX)...', 'warning');
-      retryCountRef.current = 0;
-      setRetryDisplay(0);
-      updateSource('secondary');
-      updateStreamState(STREAM_STATES.CONNECTING);
-      initStream(secondaryUrl, 'secondary');
-    } else if (source === 'secondary' && teamsUrl) {
-      retryCountRef.current = 0;
-      setRetryDisplay(0);
-      switchToTeams();
-    } else if (teamsUrl && source !== 'teams') {
-      retryCountRef.current = 0;
-      setRetryDisplay(0);
-      switchToTeams();
     } else {
-      switchToHold();
+      // Record how long this source played before failing
+      if (playbackStartTimeRef.current) {
+        const elapsed = Date.now() - playbackStartTimeRef.current;
+        sourceStabilityRef.current[source] = Math.max(
+          sourceStabilityRef.current[source] || 0,
+          elapsed
+        );
+        addLog(`${source} was stable for ${Math.round(elapsed / 1000)}s`, 'info');
+      }
+      failedSourcesRef.current.add(source);
+
+      // Find best unfailed source, sorted by stability (prefer >60s proven uptime)
+      const urlMap = { primary: primaryUrl, secondary: secondaryUrl, tertiary: tertiaryUrl };
+      const candidates = ['primary', 'secondary', 'tertiary']
+        .filter(s => !failedSourcesRef.current.has(s) && urlMap[s])
+        .sort((a, b) => {
+          const aMs = sourceStabilityRef.current[a] || 0;
+          const bMs = sourceStabilityRef.current[b] || 0;
+          const aStable = aMs >= STABLE_THRESHOLD;
+          const bStable = bMs >= STABLE_THRESHOLD;
+          if (aStable !== bStable) return bStable - aStable;
+          return bMs - aMs;
+        });
+
+      if (candidates.length > 0) {
+        const next = candidates[0];
+        const stability = sourceStabilityRef.current[next] || 0;
+        const label = stability >= STABLE_THRESHOLD
+          ? `most stable (${Math.round(stability / 1000)}s uptime)`
+          : 'next available';
+        addLog(`Switching to ${next} — ${label}`, 'warning');
+        retryCountRef.current = 0;
+        setRetryDisplay(0);
+        updateSource(next);
+        updateStreamState(STREAM_STATES.CONNECTING);
+        initStream(urlMap[next], next);
+      } else {
+        failedSourcesRef.current.clear();
+        switchToHold();
+      }
     }
   };
 
@@ -411,6 +448,8 @@ function Streaming({ primaryUrl, secondaryUrl, teamsUrl, showDebug = true }) {
         return 'Primary (Amazon IVS)';
       case 'secondary':
         return 'Backup (MUX)';
+      case 'tertiary':
+        return 'Backup (MediaPackage)';
       case 'teams':
         return 'Fallback (Teams)';
       case 'hold':
@@ -470,6 +509,7 @@ function Streaming({ primaryUrl, secondaryUrl, teamsUrl, showDebug = true }) {
           <div className="connecting-text">
             {currentSource === 'primary' && 'Connecting to stream...'}
             {currentSource === 'secondary' && 'Switching to backup stream...'}
+            {currentSource === 'tertiary' && 'Switching to MediaPackage stream...'}
           </div>
         </div>
 
