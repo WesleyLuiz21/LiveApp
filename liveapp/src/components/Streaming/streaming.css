@@ -1,0 +1,337 @@
+.streaming-wrapper {
+  position: relative;
+  background: #2a2a2a;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+}
+
+.streaming-wrapper video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+.streaming-wrapper video.hidden {
+  display: none;
+}
+
+/* Teams iframe container */
+.teams-container {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+
+.teams-container iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Hold screen with diagonal lines */
+.hold-screen {
+  position: absolute;
+  inset: 0;
+  background: #b8b8b8;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 24px;
+}
+
+.hold-screen.hidden {
+  display: none;
+}
+
+/* Diagonal lines container */
+.diagonal-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.diagonal-line {
+  position: absolute;
+  height: 4px;
+  width: 200%;
+  left: -50%;
+  transform-origin: center;
+}
+
+.line-cyan-1 {
+  background: #00e5ff;
+  top: 8%;
+  transform: rotate(-12deg);
+}
+
+.line-teal {
+  background: #00a0a0;
+  height: 12px;
+  top: 35%;
+  transform: rotate(-8deg);
+}
+
+.line-lime {
+  background: #c8ff00;
+  height: 3px;
+  top: 28%;
+  transform: rotate(-5deg);
+}
+
+.line-purple {
+  background: #9090ff;
+  height: 2px;
+  top: 22%;
+  transform: rotate(-18deg);
+}
+
+.line-red {
+  background: #ff3030;
+  height: 10px;
+  top: 58%;
+  transform: rotate(-6deg);
+}
+
+.line-cyan-2 {
+  background: #00e5ff;
+  height: 8px;
+  top: 68%;
+  transform: rotate(-4deg);
+}
+
+/* Branding */
+.hold-branding {
+  position: relative;
+  z-index: 2;
+  text-align: right;
+}
+
+.hold-tagline {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  border-bottom: 2px solid #1a1a1a;
+  padding-bottom: 4px;
+  display: inline-block;
+}
+
+.hold-logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.5px;
+}
+
+/* Connecting overlay */
+.connecting-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #fff;
+}
+
+.connecting-overlay.hidden {
+  display: none;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #00e5ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.connecting-text {
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* Play button */
+.streaming-play-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 16px 32px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #00e5ff 0%, #00a0a0 100%);
+  color: #1a1a1a;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 20px rgba(0, 229, 255, 0.3);
+  z-index: 10;
+}
+
+.streaming-play-button:hover {
+  transform: translate(-50%, -50%) scale(1.05);
+  box-shadow: 0 6px 28px rgba(0, 229, 255, 0.4);
+}
+
+.streaming-play-button:active {
+  transform: translate(-50%, -50%) scale(0.98);
+}
+
+/* Debug panel */
+.debug-panel {
+  margin-top: 16px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 16px 20px;
+  color: #fff;
+}
+
+.debug-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #333;
+}
+
+.debug-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #888;
+}
+
+.debug-toggle {
+  background: none;
+  border: 1px solid #444;
+  color: #888;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.debug-toggle:hover {
+  border-color: #666;
+  color: #aaa;
+}
+
+.debug-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.debug-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #666;
+}
+
+.debug-value {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* Status colors */
+.status-connected {
+  color: #4ade80;
+}
+
+.status-connecting {
+  color: #facc15;
+}
+
+.status-error {
+  color: #f87171;
+}
+
+.status-hold {
+  color: #a78bfa;
+}
+
+.status-teams {
+  color: #60a5fa;
+}
+
+/* Log list */
+.debug-log {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.debug-log-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.log-entry {
+  font-size: 0.8rem;
+  padding: 4px 0;
+  border-bottom: 1px solid #222;
+  display: flex;
+  gap: 8px;
+}
+
+.log-time {
+  color: #555;
+  flex-shrink: 0;
+}
+
+.log-message {
+  color: #ccc;
+}
+
+.log-entry.error .log-message {
+  color: #f87171;
+}
+
+.log-entry.success .log-message {
+  color: #4ade80;
+}
+
+.log-entry.warning .log-message {
+  color: #facc15;
+}
+
+@media (max-width: 600px) {
+  .debug-content {
+    grid-template-columns: 1fr;
+  }
+
+  .streaming-play-button {
+    padding: 12px 24px;
+    font-size: 0.9rem;
+  }
+}
